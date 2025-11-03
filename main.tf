@@ -46,6 +46,16 @@ resource "aws_instance" "devops_ec2" {
   instance_type          = var.instance_type
   vpc_security_group_ids = [aws_security_group.devops_sg.id]
 
+ # 👇 Add this section
+  user_data = <<-EOF
+              #!/bin/bash
+              set -xe
+              yum update -y
+              amazon-linux-extras enable corretto11
+              yum install -y java-19-amazon-corretto-devel
+              java -version
+              echo "Java installation complete" > /home/ec2-user/java_status.txt
+              EOF
   tags = {
     Name  = "devops-${var.stage}-instance"
     Stage = var.stage
