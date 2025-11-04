@@ -46,18 +46,54 @@ resource "aws_instance" "devops_ec2" {
   instance_type          = var.instance_type
   vpc_security_group_ids = [aws_security_group.devops_sg.id]
 
-  # 👇 User data script runs at startup
+#Updating user_data to clone and run app at port 80
   user_data = <<-EOF
               #!/bin/bash
               set -xe
               
-              # Update system and install Java (OpenJDK 19)
+              # Update system
               apt-get update -y
-              apt-get install -y openjdk-19-jdk
 
-              # Verify Java installation
-              java -version > /home/ubuntu/java_status.txt 2>&1
-              echo "Java installation complete" >> /home/ubuntu/java_status.txt
+              # Install dependencies: Java and Git
+              apt-get install -y openjdk-19-jdk git curl
+
+              # Create app directory
+              mkdir -p /home/ubuntu/app
+              cd /home/ubuntu
+
+              # Clone GitHub repo
+              git clone https://github.com/techeazy-consulting/techeazy-devops.git app
+
+              # Move into app folder
+              cd /home/ubuntu/app
+
+              # Check if any JAR file or run.sh exists, else run simple HTTP server
+              if ls *.jar 1> /dev/null 2>&1; then
+                JAR_FILE=$(ls *.jar | head -n 1)
+                echo "Running JAR: $JAR_FILE" | tee -a /home/ubuntu/app_setup.log
+                nohup java -jar $JAR_FILE > /home/ubuntu/app.log 2>&1 &
+              elif [ -f "run.sh" ]; then
+                echo "Running custom run.sh" | tee -a /home/ubuntu/app_setup.log
+                chmod +x run.sh
+                nohup ./run.sh > /home/ubuntu/app.log 2>&1 &
+              else
+                echo "No app start file found. Launching simple Python HTTP server." | tee -a /home/ubuntu/app_setup.log
+                apt-get install -y python3
+                nohup python3 -m http.server 80 > /home/ubuntu/app.log 2>&1 &
+              fi
+
+              # Wait and check if port 80 responds
+              for i in {1..10}; do
+                if curl -sSf http://localhost:80 >/dev/null 2>&1; then
+                  echo "App is reachable on port 80" | tee -a /home/ubuntu/app_setup.log
+                  break
+                else
+                  echo "Waiting for app to start... attempt $i" | tee -a /home/ubuntu/app_setup.log
+                  sleep 10
+                fi
+              done
+
+              echo "Setup complete" | tee -a /home/ubuntu/app_setup.log
               EOF
 
   tags = {
