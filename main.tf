@@ -50,52 +50,109 @@ resource "aws_instance" "devops_ec2" {
   user_data = <<-EOF
               #!/bin/bash
               set -xe
-              
-              # Update system
+
+              LOG=/home/ubuntu/app_setup.log
+              echo "user_data started at $(date)" > ${LOG}
+
+              # Update and install dependencies
               apt-get update -y
+              apt-get install -y openjdk-19-jdk git curl unzip maven
 
-              # Install dependencies: Java and Git
-              apt-get install -y openjdk-19-jdk git curl
+              echo "Java version:" >> ${LOG}
+              java -version >> ${LOG} 2>&1 || true
 
-              # Create app directory
-              mkdir -p /home/ubuntu/app
               cd /home/ubuntu
+              # Clone (or pull if already present)
+              if [ -d "/home/ubuntu/app" ]; then
+                echo "app exists; pulling latest" >> ${LOG}
+                cd /home/ubuntu/app && git pull >> ${LOG} 2>&1 || true
+              else
+                git clone https://github.com/techeazy-consulting/techeazy-devops.git app >> ${LOG} 2>&1 || { echo "git clone failed" >> ${LOG}; }
+                cd /home/ubuntu/app || { echo "app dir missing" >> ${LOG}; }
+              fi
 
-              # Clone GitHub repo
-              git clone https://github.com/techeazy-consulting/techeazy-devops.git app
+              echo "Listing app files:" >> ${LOG}
+              ls -la >> ${LOG}
 
-              # Move into app folder
-              cd /home/ubuntu/app
+              STARTED=0
 
-              # Check if any JAR file or run.sh exists, else run simple HTTP server
-              if ls *.jar 1> /dev/null 2>&1; then
-                JAR_FILE=$(ls *.jar | head -n 1)
-                echo "Running JAR: $JAR_FILE" | tee -a /home/ubuntu/app_setup.log
-                nohup java -jar $JAR_FILE > /home/ubuntu/app.log 2>&1 &
-              elif [ -f "run.sh" ]; then
-                echo "Running custom run.sh" | tee -a /home/ubuntu/app_setup.log
+              # If Maven project (pom.xml), build & run
+              if [ -f "pom.xml" ]; then
+                echo "Detected pom.xml - using Maven build" >> ${LOG}
+                mvn -DskipTests package -T1C >> ${LOG} 2>&1 || echo "mvn build failed" >> ${LOG}
+                JAR=$(ls target/*.jar 2>/dev/null | grep -v "original" | head -n1 || true)
+                if [ -n "$JAR" ]; then
+                  echo "Found jar: $JAR" >> ${LOG}
+                  nohup java -jar "$JAR" --server.port=80 > /home/ubuntu/app.log 2>&1 &
+                  STARTED=1
+                fi
+              fi
+
+              # If Gradle wrapper exists
+              if [ $STARTED -eq 0 ] && [ -f "gradlew" ]; then
+                echo "Detected gradlew - building" >> ${LOG}
+                chmod +x ./gradlew
+                ./gradlew bootJar -x test >> ${LOG} 2>&1 || echo "gradle build failed" >> ${LOG}
+                JAR=$(ls build/libs/*.jar 2>/dev/null | head -n1 || true)
+                if [ -n "$JAR" ]; then
+                  echo "Found jar: $JAR" >> ${LOG}
+                  nohup java -jar "$JAR" --server.port=80 > /home/ubuntu/app.log 2>&1 &
+                  STARTED=1
+                fi
+              fi
+
+              # If a runnable jar exists at repo root or other usual places
+              if [ $STARTED -eq 0 ]; then
+                JARROOT=$(find . -maxdepth 3 -type f -name "*.jar" -print | grep -v "original" | head -n1 || true)
+                if [ -n "$JARROOT" ]; then
+                  echo "Found jar at $JARROOT" >> ${LOG}
+                  nohup java -jar "$JARROOT" --server.port=80 > /home/ubuntu/app.log 2>&1 &
+                  STARTED=1
+                fi
+              fi
+
+              # If there's a custom run.sh
+              if [ $STARTED -eq 0 ] && [ -f "run.sh" ]; then
+                echo "Found run.sh - starting it" >> ${LOG}
                 chmod +x run.sh
                 nohup ./run.sh > /home/ubuntu/app.log 2>&1 &
-              else
-                echo "No app start file found. Launching simple Python HTTP server." | tee -a /home/ubuntu/app_setup.log
+                STARTED=1
+              fi
+
+              # Fallback: serve directory via python simple server on port 80
+              if [ $STARTED -eq 0 ]; then
+                echo "No app start file found. Launching Python HTTP server (fallback)" >> ${LOG}
                 apt-get install -y python3
                 nohup python3 -m http.server 80 > /home/ubuntu/app.log 2>&1 &
               fi
 
-              # Wait and check if port 80 responds
-              for i in {1..10}; do
+              # Wait & health-check loop for localhost:80
+              echo "Waiting for app to respond on port 80" >> ${LOG}
+              for i in {1..30}; do
                 if curl -sSf http://localhost:80 >/dev/null 2>&1; then
-                  echo "App is reachable on port 80" | tee -a /home/ubuntu/app_setup.log
+                  echo "App reachable on port 80 (attempt $i)" >> ${LOG}
                   break
                 else
-                  echo "Waiting for app to start... attempt $i" | tee -a /home/ubuntu/app_setup.log
-                  sleep 10
+                  echo "Attempt $i: not yet responding" >> ${LOG}
+                  sleep 5
                 fi
               done
 
-              echo "Setup complete" | tee -a /home/ubuntu/app_setup.log
-              EOF
+              # Save last lines of app log to main log
+              echo "Last 50 lines of app.log:" >> ${LOG}
+              tail -n 50 /home/ubuntu/app.log >> ${LOG} 2>&1 || true
 
+              # Auto-shutdown if configured
+              AUTOSTOP=${auto_stop_minutes}
+              if [ "${AUTOSTOP}" != "0" ] && [ "${AUTOSTOP}" != "" ]; then
+                echo "Scheduling shutdown in ${AUTOSTOP} minutes" >> ${LOG}
+                /sbin/shutdown -h +${AUTOSTOP} "Auto shutdown scheduled by provisioning script after ${AUTOSTOP} minutes"
+              else
+                echo "Auto shutdown disabled (auto_stop_minutes=${AUTOSTOP})" >> ${LOG}
+              fi
+
+              echo "user_data finished at $(date)" >> ${LOG}
+              EOF
   tags = {
     Name  = "devops-${var.stage}-instance"
     Stage = var.stage
