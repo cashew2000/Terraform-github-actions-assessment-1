@@ -47,112 +47,103 @@ resource "aws_instance" "devops_ec2" {
   vpc_security_group_ids = [aws_security_group.devops_sg.id]
 
 #Updating user_data to clone and run app at port 80
-  user_data = <<-EOF
-              #!/bin/bash
-              set -xe
+  user_data = user_data = <<-EOF
+            #!/bin/bash
+            set -xe
 
-              LOG=/home/ubuntu/app_setup.log
-              echo "user_data started at $(date)" > ${LOG}
+            LOG=/home/ubuntu/app_setup.log
+            echo "user_data started at $(date)" > $LOG
 
-              # Update and install dependencies
-              apt-get update -y
-              apt-get install -y openjdk-19-jdk git curl unzip maven
+            apt-get update -y
+            apt-get install -y openjdk-19-jdk git curl unzip maven
 
-              echo "Java version:" >> ${LOG}
-              java -version >> ${LOG} 2>&1 || true
+            echo "Java version:" >> $LOG
+            java -version >> $LOG 2>&1 || true
 
-              cd /home/ubuntu
-              # Clone (or pull if already present)
-              if [ -d "/home/ubuntu/app" ]; then
-                echo "app exists; pulling latest" >> ${LOG}
-                cd /home/ubuntu/app && git pull >> ${LOG} 2>&1 || true
-              else
-                git clone https://github.com/techeazy-consulting/techeazy-devops.git app >> ${LOG} 2>&1 || { echo "git clone failed" >> ${LOG}; }
-                cd /home/ubuntu/app || { echo "app dir missing" >> ${LOG}; }
-              fi
+            cd /home/ubuntu
+            if [ -d "/home/ubuntu/app" ]; then
+              echo "app exists; pulling latest" >> $LOG
+              cd /home/ubuntu/app && git pull >> $LOG 2>&1 || true
+            else
+              git clone https://github.com/techeazy-consulting/techeazy-devops.git app >> $LOG 2>&1 || { echo "git clone failed" >> $LOG; }
+              cd /home/ubuntu/app || { echo "app dir missing" >> $LOG; }
+            fi
 
-              echo "Listing app files:" >> ${LOG}
-              ls -la >> ${LOG}
+            echo "Listing app files:" >> $LOG
+            ls -la >> $LOG
 
-              STARTED=0
+            STARTED=0
 
-              # If Maven project (pom.xml), build & run
-              if [ -f "pom.xml" ]; then
-                echo "Detected pom.xml - using Maven build" >> ${LOG}
-                mvn -DskipTests package -T1C >> ${LOG} 2>&1 || echo "mvn build failed" >> ${LOG}
-                JAR=$(ls target/*.jar 2>/dev/null | grep -v "original" | head -n1 || true)
-                if [ -n "$JAR" ]; then
-                  echo "Found jar: $JAR" >> ${LOG}
-                  nohup java -jar "$JAR" --server.port=80 > /home/ubuntu/app.log 2>&1 &
-                  STARTED=1
-                fi
-              fi
-
-              # If Gradle wrapper exists
-              if [ $STARTED -eq 0 ] && [ -f "gradlew" ]; then
-                echo "Detected gradlew - building" >> ${LOG}
-                chmod +x ./gradlew
-                ./gradlew bootJar -x test >> ${LOG} 2>&1 || echo "gradle build failed" >> ${LOG}
-                JAR=$(ls build/libs/*.jar 2>/dev/null | head -n1 || true)
-                if [ -n "$JAR" ]; then
-                  echo "Found jar: $JAR" >> ${LOG}
-                  nohup java -jar "$JAR" --server.port=80 > /home/ubuntu/app.log 2>&1 &
-                  STARTED=1
-                fi
-              fi
-
-              # If a runnable jar exists at repo root or other usual places
-              if [ $STARTED -eq 0 ]; then
-                JARROOT=$(find . -maxdepth 3 -type f -name "*.jar" -print | grep -v "original" | head -n1 || true)
-                if [ -n "$JARROOT" ]; then
-                  echo "Found jar at $JARROOT" >> ${LOG}
-                  nohup java -jar "$JARROOT" --server.port=80 > /home/ubuntu/app.log 2>&1 &
-                  STARTED=1
-                fi
-              fi
-
-              # If there's a custom run.sh
-              if [ $STARTED -eq 0 ] && [ -f "run.sh" ]; then
-                echo "Found run.sh - starting it" >> ${LOG}
-                chmod +x run.sh
-                nohup ./run.sh > /home/ubuntu/app.log 2>&1 &
+            if [ -f "pom.xml" ]; then
+              echo "Detected pom.xml - using Maven build" >> $LOG
+              mvn -DskipTests package -T1C >> $LOG 2>&1 || echo "mvn build failed" >> $LOG
+              JAR=$(ls target/*.jar 2>/dev/null | grep -v "original" | head -n1 || true)
+              if [ -n "$JAR" ]; then
+                echo "Found jar: $JAR" >> $LOG
+                nohup java -jar "$JAR" --server.port=80 > /home/ubuntu/app.log 2>&1 &
                 STARTED=1
               fi
+            fi
 
-              # Fallback: serve directory via python simple server on port 80
-              if [ $STARTED -eq 0 ]; then
-                echo "No app start file found. Launching Python HTTP server (fallback)" >> ${LOG}
-                apt-get install -y python3
-                nohup python3 -m http.server 80 > /home/ubuntu/app.log 2>&1 &
+            if [ $STARTED -eq 0 ] && [ -f "gradlew" ]; then
+              echo "Detected gradlew - building" >> $LOG
+              chmod +x ./gradlew
+              ./gradlew bootJar -x test >> $LOG 2>&1 || echo "gradle build failed" >> $LOG
+              JAR=$(ls build/libs/*.jar 2>/dev/null | head -n1 || true)
+              if [ -n "$JAR" ]; then
+                echo "Found jar: $JAR" >> $LOG
+                nohup java -jar "$JAR" --server.port=80 > /home/ubuntu/app.log 2>&1 &
+                STARTED=1
               fi
+            fi
 
-              # Wait & health-check loop for localhost:80
-              echo "Waiting for app to respond on port 80" >> ${LOG}
-              for i in {1..30}; do
-                if curl -sSf http://localhost:80 >/dev/null 2>&1; then
-                  echo "App reachable on port 80 (attempt $i)" >> ${LOG}
-                  break
-                else
-                  echo "Attempt $i: not yet responding" >> ${LOG}
-                  sleep 5
-                fi
-              done
+            if [ $STARTED -eq 0 ]; then
+              JARROOT=$(find . -maxdepth 3 -type f -name "*.jar" -print | grep -v "original" | head -n1 || true)
+              if [ -n "$JARROOT" ]; then
+                echo "Found jar at $JARROOT" >> $LOG
+                nohup java -jar "$JARROOT" --server.port=80 > /home/ubuntu/app.log 2>&1 &
+                STARTED=1
+              fi
+            fi
 
-              # Save last lines of app log to main log
-              echo "Last 50 lines of app.log:" >> ${LOG}
-              tail -n 50 /home/ubuntu/app.log >> ${LOG} 2>&1 || true
+            if [ $STARTED -eq 0 ] && [ -f "run.sh" ]; then
+              echo "Found run.sh - starting it" >> $LOG
+              chmod +x run.sh
+              nohup ./run.sh > /home/ubuntu/app.log 2>&1 &
+              STARTED=1
+            fi
 
-              # Auto-shutdown if configured
-              AUTOSTOP=${auto_stop_minutes}
-              if [ "${AUTOSTOP}" != "0" ] && [ "${AUTOSTOP}" != "" ]; then
-                echo "Scheduling shutdown in ${AUTOSTOP} minutes" >> ${LOG}
-                /sbin/shutdown -h +${AUTOSTOP} "Auto shutdown scheduled by provisioning script after ${AUTOSTOP} minutes"
+            if [ $STARTED -eq 0 ]; then
+              echo "No app start file found. Launching Python HTTP server (fallback)" >> $LOG
+              apt-get install -y python3
+              nohup python3 -m http.server 80 > /home/ubuntu/app.log 2>&1 &
+            fi
+
+            echo "Waiting for app to respond on port 80" >> $LOG
+            for i in {1..30}; do
+              if curl -sSf http://localhost:80 >/dev/null 2>&1; then
+                echo "App reachable on port 80 (attempt $i)" >> $LOG
+                break
               else
-                echo "Auto shutdown disabled (auto_stop_minutes=${AUTOSTOP})" >> ${LOG}
+                echo "Attempt $i: not yet responding" >> $LOG
+                sleep 5
               fi
+            done
 
-              echo "user_data finished at $(date)" >> ${LOG}
-              EOF
+            echo "Last 50 lines of app.log:" >> $LOG
+            tail -n 50 /home/ubuntu/app.log >> $LOG 2>&1 || true
+
+            AUTOSTOP=${auto_stop_minutes}
+            if [ "$AUTOSTOP" != "0" ] && [ "$AUTOSTOP" != "" ]; then
+              echo "Scheduling shutdown in $AUTOSTOP minutes" >> $LOG
+              /sbin/shutdown -h +$AUTOSTOP "Auto shutdown scheduled after $AUTOSTOP minutes"
+            else
+              echo "Auto shutdown disabled (auto_stop_minutes=$AUTOSTOP)" >> $LOG
+            fi
+
+            echo "user_data finished at $(date)" >> $LOG
+            EOF
+
   tags = {
     Name  = "devops-${var.stage}-instance"
     Stage = var.stage
