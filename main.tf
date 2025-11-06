@@ -47,7 +47,7 @@ resource "aws_instance" "devops_ec2" {
   vpc_security_group_ids = [aws_security_group.devops_sg.id]
 
 #Updating user_data to clone and run app at port 80
-  user_data = user_data = <<-EOF
+  user_data = <<-EOF
             #!/bin/bash
             set -xe
 
@@ -143,6 +143,7 @@ resource "aws_instance" "devops_ec2" {
 
             echo "user_data finished at $(date)" >> $LOG
             EOF
+
 
   tags = {
     Name  = "devops-${var.stage}-instance"
