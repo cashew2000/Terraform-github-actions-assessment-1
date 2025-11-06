@@ -12,3 +12,8 @@ variable "stage" {
   description = "Deployment stage (e.g., dev, prod)"
   default     = "dev"
 }
+variable "auto_stop_minutes" {
+  description = "Minutes after which instance will shut down to save cost (0 to disable)"
+  type        = number
+  default     = 60
+}
