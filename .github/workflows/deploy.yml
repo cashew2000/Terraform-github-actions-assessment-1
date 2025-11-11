@@ -32,10 +32,11 @@ jobs:
 
       - name: Terraform Init
         run: terraform init
-          
-      - name: Terraform Apply
-        run: terraform apply -auto-approve -var="stage=${{ github.event.inputs.stage }}" -var="auto_stop_minutes=${{ github.event.inputs.auto_stop_minutes }}"
 
+      - name: Terraform Apply
+        run: terraform apply -auto-approve \ -var="stage=${{ github.event.inputs.stage }}" \ -var="auto_stop_minutes=${{ github.event.inputs.auto_stop_minutes }}"
+          
+          
       - name: Capture public IP
         id: get_ip
         run: echo "ip=$(terraform output -raw public_ip)" >> $GITHUB_OUTPUT
