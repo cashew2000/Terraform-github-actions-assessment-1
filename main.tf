@@ -1,11 +1,31 @@
+##############################################################
+# Terraform configuration for Assessment 1
+# Launch Ubuntu EC2, install Java, clone repo, run app, auto-shutdown
+##############################################################
+
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+  required_version = ">= 1.5.0"
+}
+
+##############################################################
+# Provider
+##############################################################
 provider "aws" {
   region = var.aws_region
 }
 
-# ✅ Get the latest Ubuntu 22.04 LTS AMI for your region
+##############################################################
+# Data source – latest Ubuntu 22.04 AMI
+##############################################################
 data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["099720109477"] # Canonical's AWS account ID
+  owners      = ["099720109477"] # Canonical
 
   filter {
     name   = "name"
@@ -13,7 +33,9 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-# ✅ Security Group: allow SSH and HTTP
+##############################################################
+# Security group
+##############################################################
 resource "aws_security_group" "devops_sg" {
   name_prefix = "devops-sg-"
   description = "Allow SSH and HTTP"
@@ -40,110 +62,18 @@ resource "aws_security_group" "devops_sg" {
   }
 }
 
-# ✅ EC2 Instance (Ubuntu)
+##############################################################
+# EC2 Instance
+##############################################################
 resource "aws_instance" "devops_ec2" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
   vpc_security_group_ids = [aws_security_group.devops_sg.id]
 
-#Updating user_data to clone and run app at port 80
-  user_data = <<-EOF
-            #!/bin/bash
-            set -xe
-
-            LOG=/home/ubuntu/app_setup.log
-            echo "user_data started at $(date)" > $LOG
-
-            apt-get update -y
-            apt-get install -y openjdk-19-jdk git curl unzip maven
-
-            echo "Java version:" >> $LOG
-            java -version >> $LOG 2>&1 || true
-
-            cd /home/ubuntu
-            if [ -d "/home/ubuntu/app" ]; then
-              echo "app exists; pulling latest" >> $LOG
-              cd /home/ubuntu/app && git pull >> $LOG 2>&1 || true
-            else
-              git clone https://github.com/techeazy-consulting/techeazy-devops.git app >> $LOG 2>&1 || { echo "git clone failed" >> $LOG; }
-              cd /home/ubuntu/app || { echo "app dir missing" >> $LOG; }
-            fi
-
-            echo "Listing app files:" >> $LOG
-            ls -la >> $LOG
-
-            STARTED=0
-
-            if [ -f "pom.xml" ]; then
-              echo "Detected pom.xml - using Maven build" >> $LOG
-              mvn -DskipTests package -T1C >> $LOG 2>&1 || echo "mvn build failed" >> $LOG
-              JAR=$(ls target/*.jar 2>/dev/null | grep -v "original" | head -n1 || true)
-              if [ -n "$JAR" ]; then
-                echo "Found jar: $JAR" >> $LOG
-                nohup java -jar "$JAR" --server.port=80 > /home/ubuntu/app.log 2>&1 &
-                STARTED=1
-              fi
-            fi
-
-            if [ $STARTED -eq 0 ] && [ -f "gradlew" ]; then
-              echo "Detected gradlew - building" >> $LOG
-              chmod +x ./gradlew
-              ./gradlew bootJar -x test >> $LOG 2>&1 || echo "gradle build failed" >> $LOG
-              JAR=$(ls build/libs/*.jar 2>/dev/null | head -n1 || true)
-              if [ -n "$JAR" ]; then
-                echo "Found jar: $JAR" >> $LOG
-                nohup java -jar "$JAR" --server.port=80 > /home/ubuntu/app.log 2>&1 &
-                STARTED=1
-              fi
-            fi
-
-            if [ $STARTED -eq 0 ]; then
-              JARROOT=$(find . -maxdepth 3 -type f -name "*.jar" -print | grep -v "original" | head -n1 || true)
-              if [ -n "$JARROOT" ]; then
-                echo "Found jar at $JARROOT" >> $LOG
-                nohup java -jar "$JARROOT" --server.port=80 > /home/ubuntu/app.log 2>&1 &
-                STARTED=1
-              fi
-            fi
-
-            if [ $STARTED -eq 0 ] && [ -f "run.sh" ]; then
-              echo "Found run.sh - starting it" >> $LOG
-              chmod +x run.sh
-              nohup ./run.sh > /home/ubuntu/app.log 2>&1 &
-              STARTED=1
-            fi
-
-            if [ $STARTED -eq 0 ]; then
-              echo "No app start file found. Launching Python HTTP server (fallback)" >> $LOG
-              apt-get install -y python3
-              nohup python3 -m http.server 80 > /home/ubuntu/app.log 2>&1 &
-            fi
-
-            echo "Waiting for app to respond on port 80" >> $LOG
-            for i in {1..30}; do
-              if curl -sSf http://localhost:80 >/dev/null 2>&1; then
-                echo "App reachable on port 80 (attempt $i)" >> $LOG
-                break
-              else
-                echo "Attempt $i: not yet responding" >> $LOG
-                sleep 5
-              fi
-            done
-
-            echo "Last 50 lines of app.log:" >> $LOG
-            tail -n 50 /home/ubuntu/app.log >> $LOG 2>&1 || true
-
-            AUTOSTOP=${auto_stop_minutes}
-            if [ "$AUTOSTOP" != "0" ] && [ "$AUTOSTOP" != "" ]; then
-              echo "Scheduling shutdown in $AUTOSTOP minutes" >> $LOG
-              /sbin/shutdown -h +$AUTOSTOP "Auto shutdown scheduled after $AUTOSTOP minutes"
-            else
-              echo "Auto shutdown disabled (auto_stop_minutes=$AUTOSTOP)" >> $LOG
-            fi
-
-            echo "user_data finished at $(date)" >> $LOG
-            EOF
-
+  # Pass parameters into user-data template
+  user_data = templatefile("${path.module}/scripts/user_data.tpl", {
+    auto_stop_minutes = var.auto_stop_minutes
+  })
 
   tags = {
     Name  = "devops-${var.stage}-instance"
@@ -151,11 +81,15 @@ resource "aws_instance" "devops_ec2" {
   }
 }
 
-# ✅ Outputs
+##############################################################
+# Outputs
+##############################################################
 output "public_ip" {
-  value = aws_instance.devops_ec2.public_ip
+  value       = aws_instance.devops_ec2.public_ip
+  description = "Public IP of EC2 instance"
 }
 
 output "public_dns" {
-  value = aws_instance.devops_ec2.public_dns
+  value       = aws_instance.devops_ec2.public_dns
+  description = "Public DNS of EC2 instance"
 }
