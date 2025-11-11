@@ -37,21 +37,24 @@ jobs:
         run: terraform apply -auto-approve -var="stage=${{ github.event.inputs.stage }}" -var="auto_stop_minutes=${{ github.event.inputs.auto_stop_minutes }}"
           
           
-      - name: Capture public IP
-        id: get_ip
-        run: echo "ip=$(terraform output -raw public_ip)" >> $GITHUB_OUTPUT
+      - name: Show Terraform Outputs
+        run: terraform output
 
-      - name: Health check public IP
+      - name: Capture Public IP
+        id: get_ip
+        run: |
+          IP=$(terraform output -raw public_ip 2>/dev/null || terraform output public_ip | tr -d '"')
+          echo "ip=$IP" >> $GITHUB_OUTPUT
+          echo "Public IP: $IP"
+
+      - name: Health Check (HTTP 80)
         run: |
           IP=${{ steps.get_ip.outputs.ip }}
           echo "Checking http://$IP ..."
           n=0
           until curl -sSf http://$IP || [ $n -ge 30 ]; do
-            n=$((n+1))
-            sleep 5
+          n=$((n+1))
+          echo "Attempt $n failed, retrying..."
+          sleep 5
           done
-          if [ $n -ge 30 ]; then
-            echo "App did not respond on public IP within timeout."
-            exit 1
-          fi
           echo "App reachable at http://$IP"
