@@ -6,7 +6,10 @@ echo "user_data started at $(date)" > $LOG
 
 # Update and install dependencies
 apt-get update -y
-apt-get install -y openjdk-19-jdk git curl unzip maven python3
+apt-get install -y openjdk-21-jdk git curl unzip maven python3
+
+# Ensure Java 21 is default
+update-alternatives --set java /usr/lib/jvm/java-21-openjdk-amd64/bin/java
 
 echo "Java version:" >> $LOG
 java -version >> $LOG 2>&1 || true
