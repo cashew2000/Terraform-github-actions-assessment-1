@@ -34,7 +34,7 @@ jobs:
         run: terraform init
 
       - name: Terraform Apply
-        run: terraform apply -auto-approve \ -var="stage=${{ github.event.inputs.stage }}" \ -var="auto_stop_minutes=${{ github.event.inputs.auto_stop_minutes }}"
+        run: terraform apply -auto-approve -var="stage=${{ github.event.inputs.stage }}" -var="auto_stop_minutes=${{ github.event.inputs.auto_stop_minutes }}"
           
           
       - name: Capture public IP
