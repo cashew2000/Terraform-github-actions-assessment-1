@@ -39,22 +39,3 @@ jobs:
           
       - name: Show Terraform Outputs
         run: terraform output
-
-      - name: Capture Public IP
-        id: get_ip
-        run: |
-          IP=$(terraform output -raw public_ip 2>/dev/null || terraform output public_ip | tr -d '"')
-          echo "ip=$IP" >> $GITHUB_OUTPUT
-          echo "Public IP: $IP"
-
-      - name: Health Check (HTTP 80)
-        run: |
-          IP=${{ steps.get_ip.outputs.ip }}
-          echo "Checking http://$IP ..."
-          n=0
-          until curl -sSf http://$IP || [ $n -ge 30 ]; do
-          n=$((n+1))
-          echo "Attempt $n failed, retrying..."
-          sleep 5
-          done
-          echo "App reachable at http://$IP"
