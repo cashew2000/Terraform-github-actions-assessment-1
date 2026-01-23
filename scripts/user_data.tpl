@@ -22,7 +22,9 @@ aws --version >> $LOG 2>&1
 STAGE="${stage}"
 INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
 BUCKET_NAME="${s3_bucket_name}"
-S3_PATH="s3://${BUCKET_NAME}/logs/${STAGE}/${INSTANCE_ID}"
+
+S3_PATH="s3://$${BUCKET_NAME}/logs/$${STAGE}/$${INSTANCE_ID}"
+
 
 # ----------------------------
 # Clone / update repo
