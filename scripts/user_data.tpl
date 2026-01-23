@@ -1,68 +1,83 @@
 #!/bin/bash
-set -xe
+set -e
 
 LOG=/home/ubuntu/app_setup.log
-echo "user_data started at $(date)" > $LOG
+APP_LOG=/home/ubuntu/app.log
 
-# Update and install dependencies
-apt-get update -y
-apt-get install -y openjdk-21-jdk git curl unzip maven python3
+echo "[INFO] user_data started at $(date)" | tee -a $LOG
 
-# Ensure Java 21 is default
-update-alternatives --set java /usr/lib/jvm/java-21-openjdk-amd64/bin/java
+# ----------------------------
+# System update & dependencies
+# ----------------------------
+apt-get update -y >> $LOG 2>&1
+apt-get install -y openjdk-21-jdk maven git awscli curl >> $LOG 2>&1
 
-echo "Java version:" >> $LOG
-java -version >> $LOG 2>&1 || true
+java -version >> $LOG 2>&1
+mvn -version >> $LOG 2>&1
+aws --version >> $LOG 2>&1
 
+# ----------------------------
+# Variables
+# ----------------------------
+STAGE="${stage}"
+INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+BUCKET_NAME="${s3_bucket_name}"
+S3_PATH="s3://${BUCKET_NAME}/logs/${STAGE}/${INSTANCE_ID}"
+
+# ----------------------------
+# Clone / update repo
+# ----------------------------
 cd /home/ubuntu
 
-# Clone or update repo
-if [ -d "/home/ubuntu/app" ]; then
-  echo "Existing repo found, pulling latest" >> $LOG
-  cd /home/ubuntu/app && git pull >> $LOG 2>&1
+if [ ! -d app ]; then
+  git clone https://github.com/<YOUR_GITHUB_USERNAME>/<YOUR_REPO>.git app >> $LOG 2>&1
 else
-  git clone https://github.com/techeazy-consulting/techeazy-devops.git app >> $LOG 2>&1
-  cd /home/ubuntu/app || { echo "Failed to enter app directory" >> $LOG; exit 1; }
+  cd app && git pull >> $LOG 2>&1
 fi
 
-# Try to build/run Spring Boot app
-STARTED=0
-if [ -f "pom.xml" ]; then
-  echo "Detected pom.xml – using Maven build" >> $LOG
-  mvn -DskipTests package >> $LOG 2>&1
-  JAR=$(find target -maxdepth 1 -type f -name "*.jar" ! -name "original*" | head -n1 || true)
-  if [ -n "$JAR" ]; then
-    nohup java -jar "$JAR" --server.port=80 > /home/ubuntu/app.log 2>&1 &
-    STARTED=1
-  fi
-fi
+cd /home/ubuntu/app
 
+# ----------------------------
+# Build and run application
+# ----------------------------
+mvn clean package >> $LOG 2>&1
 
-# Fallback simple web server
-if [ $STARTED -eq 0 ]; then
-  echo "No runnable jar found; starting Python HTTP server on port 80" >> $LOG
-  nohup python3 -m http.server 80 > /home/ubuntu/app.log 2>&1 &
-fi
+nohup java -jar target/*.jar --server.port=80 > $APP_LOG 2>&1 &
 
-# Health check loop (safe syntax)
-echo "Waiting for app to respond on port 80" >> $LOG
-for ((i=1;i<=30;i++)); do
-  if curl -sSf http://localhost:80 >/dev/null 2>&1; then
-    echo "App reachable on port 80 (attempt $i)" >> $LOG
+# ----------------------------
+# Health check
+# ----------------------------
+echo "[INFO] Waiting for app on port 80" | tee -a $LOG
+for i in {1..30}; do
+  if curl -s http://localhost:80 >/dev/null; then
+    echo "[INFO] App is running" | tee -a $LOG
     break
-  else
-    echo "Attempt $i: not yet responding" >> $LOG
-    sleep 5
   fi
+  sleep 5
 done
 
-# Auto-shutdown
-AUTOSTOP=${auto_stop_minutes}
-if [ "$AUTOSTOP" != "0" ] && [ "$AUTOSTOP" != "" ]; then
-  echo "Scheduling shutdown in $AUTOSTOP minutes" >> $LOG
-  /sbin/shutdown -h +$AUTOSTOP "Auto shutdown after $AUTOSTOP minutes"
-else
-  echo "Auto shutdown disabled" >> $LOG
+# ----------------------------
+# Upload logs to S3
+# ----------------------------
+echo "[INFO] Uploading logs to S3" | tee -a $LOG
+
+aws s3 cp $LOG     ${S3_PATH}/app_setup.log >> $LOG 2>&1
+aws s3 cp $APP_LOG ${S3_PATH}/app.log       >> $LOG 2>&1
+
+# ----------------------------
+# Auto shutdown (if enabled)
+# ----------------------------
+if [ "${auto_stop_minutes}" != "0" ]; then
+  echo "[INFO] Scheduling shutdown in ${auto_stop_minutes} minutes" | tee -a $LOG
+
+  # Upload logs again just before shutdown
+  (
+    sleep $((${auto_stop_minutes} * 60 - 30))
+    aws s3 cp $LOG     ${S3_PATH}/app_setup.log >> $LOG 2>&1
+    aws s3 cp $APP_LOG ${S3_PATH}/app.log       >> $LOG 2>&1
+  ) &
+
+  shutdown -h +${auto_stop_minutes}
 fi
 
-echo "user_data finished at $(date)" >> $LOG
+echo "[INFO] user_data finished at $(date)" | tee -a $LOG
