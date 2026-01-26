@@ -1,41 +1,136 @@
-name: Terraform EC2 Deployment
+#name: Terraform EC2 Deployment 
+
+#on:
+#  workflow_dispatch:
+#    inputs:
+ #     stage:
+ #       description: "Stage (dev/prod)"
+   #     required: true
+  #      default: "dev"
+  #    auto_stop_minutes:
+   #     description: "Minutes after which EC2 should shut down (0 to disable)"
+   #     required: false
+   #     default: "60"
+
+#jobs:
+# deploy:
+#    runs-on: ubuntu-latest
+
+#    steps:
+ #     - name: Checkout repository
+ #       uses: actions/checkout@v4
+
+ #     - name: Setup Terraform
+ #       uses: hashicorp/setup-terraform@v2
+
+  #    - name: Configure AWS credentials
+  #      uses: aws-actions/configure-aws-credentials@v2
+  #      with:
+  #        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+   #       aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+   #       aws-region: ap-southeast-2
+
+ #     - name: Terraform Init
+ #       run: terraform init
+
+  #    - name: Terraform Apply
+ #       run: terraform apply -auto-approve -var="stage=${{ github.event.inputs.stage }}" -var="auto_stop_minutes=${{ github.event.inputs.auto_stop_minutes }}"
+          
+          
+ #     - name: Show Terraform Outputs
+#        run: terraform output
+
+name: DevOps Assignment 3 – Pipeline Wiring (Safe Mode)
 
 on:
+  push:
+    branches:
+      - main
+    tags:
+      - deploy-prod*
   workflow_dispatch:
-    inputs:
-      stage:
-        description: "Stage (dev/prod)"
-        required: true
-        default: "dev"
-      auto_stop_minutes:
-        description: "Minutes after which EC2 should shut down (0 to disable)"
-        required: false
-        default: "60"
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      # -----------------------------
+      # Checkout repository
+      # -----------------------------
+      - name: Checkout code
         uses: actions/checkout@v4
 
+      # -----------------------------
+      # Determine deployment stage
+      # -----------------------------
+      - name: Determine deployment stage
+        id: stage
+        run: |
+          echo "GITHUB_REF=${GITHUB_REF}"
+
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            echo "stage=dev" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF}" == refs/tags/deploy-prod* ]]; then
+            echo "stage=prod" >> $GITHUB_OUTPUT
+          else
+            echo "Unsupported ref: ${GITHUB_REF}"
+            exit 1
+          fi
+
+      - name: Show detected stage
+        run: echo "Deployment stage is ${{ steps.stage.outputs.stage }}"
+
+      # -----------------------------
+      # Setup SSH (private key from secrets)
+      # -----------------------------
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          # Prevent SSH host verification issues later
+          ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+
+      # -----------------------------
+      # Setup Terraform
+      # -----------------------------
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-southeast-2
-
+      # -----------------------------
+      # Terraform Init
+      # -----------------------------
       - name: Terraform Init
         run: terraform init
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve -var="stage=${{ github.event.inputs.stage }}" -var="auto_stop_minutes=${{ github.event.inputs.auto_stop_minutes }}"
-          
-          
-      - name: Show Terraform Outputs
-        run: terraform output
+      # -----------------------------
+      # Terraform Validate
+      # -----------------------------
+      - name: Terraform Validate
+        run: terraform validate
+
+      # -----------------------------
+      # Terraform Plan (NO APPLY)
+      # -----------------------------
+      - name: Terraform Plan (safe – no apply)
+        run: |
+          terraform plan \
+            -var="stage=${{ steps.stage.outputs.stage }}"
+
+      # -----------------------------
+      # Placeholder for SSH Deployment
+      # -----------------------------
+      - name: SSH Deployment (placeholder)
+        run: |
+          echo "SSH deployment will be added in next step"
+          echo "Stage: ${{ steps.stage.outputs.stage }}"
+
+      # -----------------------------
+      # IMPORTANT:
+      # terraform apply is intentionally disabled
+      # for Assignment 3 pipeline wiring
+      # -----------------------------
+      # - name: Terraform Apply
+      #   run: terraform apply -auto-approve
