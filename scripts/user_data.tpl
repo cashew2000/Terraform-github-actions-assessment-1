@@ -63,8 +63,9 @@ done
 # ----------------------------
 echo "[INFO] Uploading logs to S3" | tee -a $LOG
 
-aws s3 cp $LOG     ${S3_PATH}/app_setup.log >> $LOG 2>&1
-aws s3 cp $APP_LOG ${S3_PATH}/app.log       >> $LOG 2>&1
+
+aws s3 cp $LOG     $${S3_PATH}/app_setup.log >> $LOG 2>&1
+aws s3 cp $APP_LOG $${S3_PATH}/app.log       >> $LOG 2>&1
 
 # ----------------------------
 # Auto shutdown (if enabled)
