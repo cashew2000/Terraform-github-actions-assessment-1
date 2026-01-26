@@ -69,7 +69,7 @@ jobs:
         run: |
           echo "GITHUB_REF=${GITHUB_REF}"
 
-          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]] || [[ "${GITHUB_REF}" == "refs/heads/assessment2" ]]; then
             echo "stage=dev" >> $GITHUB_OUTPUT
           elif [[ "${GITHUB_REF}" == refs/tags/deploy-prod* ]]; then
             echo "stage=prod" >> $GITHUB_OUTPUT
