@@ -46,7 +46,7 @@ on:
   push:
     branches:
       - main
-      - assessment2
+      - assessment-2
     tags:
       - deploy-prod*
   workflow_dispatch:
@@ -70,7 +70,7 @@ jobs:
         run: |
           echo "GITHUB_REF=${GITHUB_REF}"
 
-          if [[ "${GITHUB_REF}" == "refs/heads/main" ]] || [[ "${GITHUB_REF}" == "refs/heads/assessment2" ]]; then
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]] || [[ "${GITHUB_REF}" == "refs/heads/assessment-2" ]]; then
             echo "stage=dev" >> $GITHUB_OUTPUT
           elif [[ "${GITHUB_REF}" == refs/tags/deploy-prod* ]]; then
             echo "stage=prod" >> $GITHUB_OUTPUT
