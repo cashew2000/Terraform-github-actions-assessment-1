@@ -76,8 +76,8 @@ if [ "${auto_stop_minutes}" != "0" ]; then
   # Upload logs again just before shutdown
   (
     sleep $((${auto_stop_minutes} * 60 - 30))
-    aws s3 cp $LOG     ${S3_PATH}/app_setup.log >> $LOG 2>&1
-    aws s3 cp $APP_LOG ${S3_PATH}/app.log       >> $LOG 2>&1
+    aws s3 cp $LOG     $${S3_PATH}/app_setup.log >> $LOG 2>&1
+    aws s3 cp $APP_LOG $${S3_PATH}/app.log       >> $LOG 2>&1
   ) &
 
   shutdown -h +${auto_stop_minutes}
