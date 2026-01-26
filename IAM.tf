@@ -52,7 +52,7 @@ resource "aws_iam_role_policy_attachment" "attach_s3_policy" {
 
 # 4️⃣ Instance Profile (EC2 uses this to assume the role)
 resource "aws_iam_instance_profile" "ec2_instance_profile" {
-  name = "EC2InstanceProfile-${var.stage}-v2 "
+  name = "EC2InstanceProfile-${var.stage}-v2"
   role = aws_iam_role.ec2_s3_role.name
 }
 
