@@ -4,7 +4,7 @@
 
 # 1️⃣ IAM Policy: Allow EC2 to write logs to the S3 bucket
 resource "aws_iam_policy" "s3_write_policy" {
-  name        = "EC2S3WritePolicy-${var.stage}-v2"
+  name = "${var.project}-s3-write-${var.stage}"
   description = "Allow EC2 instances to upload logs to the S3 app_logs bucket"
 
   policy = jsonencode({
@@ -28,7 +28,7 @@ resource "aws_iam_policy" "s3_write_policy" {
 
 # 2️⃣ IAM Role: trusted by EC2 service
 resource "aws_iam_role" "ec2_s3_role" {
-  name = "EC2S3AccessRole-${var.stage}-v2"
+  name = "${var.project}-ec2-role-${var.stage}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -52,7 +52,7 @@ resource "aws_iam_role_policy_attachment" "attach_s3_policy" {
 
 # 4️⃣ Instance Profile (EC2 uses this to assume the role)
 resource "aws_iam_instance_profile" "ec2_instance_profile" {
-  name = "EC2InstanceProfile-${var.stage}-v2"
+  name = "${var.project}-instance-profile-${var.stage}"
   role = aws_iam_role.ec2_s3_role.name
 }
 
