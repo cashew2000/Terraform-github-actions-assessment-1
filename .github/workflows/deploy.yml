@@ -160,7 +160,7 @@ jobs:
           if [ ! -d app/.git ]; then
             echo "[INFO] App directory not a git repo. Re-cloning..." | tee -a $DEPLOY_LOG
             rm -rf app
-            git clone https://github.com/<YOUR_GITHUB_USERNAME>/<YOUR_REPO>.git app >> $DEPLOY_LOG 2>&1
+            git clone https://github.com/techeazy-consulting/techeazy-devops.git app >> $DEPLOY_LOG 2>&1
           else
            cd app
            echo "[INFO] Pulling latest code" | tee -a $DEPLOY_LOG
