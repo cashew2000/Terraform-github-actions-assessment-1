@@ -70,7 +70,7 @@ jobs:
         run: |
           echo "GITHUB_REF=${GITHUB_REF}"
 
-          if [[ "${GITHUB_REF}" == "refs/heads/main" ]] || [[ "${GITHUB_REF}" == "refs/heads/assessment-2" ]]; then
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]] || [[ "${GITHUB_REF}" == "refs/heads/assessment-3" ]]; then
             echo "stage=dev" >> $GITHUB_OUTPUT
           elif [[ "${GITHUB_REF}" == refs/tags/deploy-prod* ]]; then
             echo "stage=prod" >> $GITHUB_OUTPUT
@@ -125,6 +125,9 @@ jobs:
         run: |
           terraform plan \
             -var="stage=${{ steps.stage.outputs.stage }}"
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
 
       # -----------------------------
       # Placeholder for SSH Deployment
