@@ -126,16 +126,78 @@ jobs:
           terraform plan \
             -var="stage=${{ steps.stage.outputs.stage }}"
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve
+      #- name: Terraform Apply
+      #  run: terraform apply -auto-approve
 
+      - name: Set EC2 Public IP (temporary)
+        run: |
+          echo "EC2_PUBLIC_IP=3.27.105.135" >> $GITHUB_ENV
+          echo "Using EC2 IP: 3.27.105.135"
+
+       
       # -----------------------------
       # Placeholder for SSH Deployment
       # -----------------------------
-      - name: SSH Deployment (placeholder)
+      - name: Deploy application over SSH + upload logs to S3
         run: |
-          echo "SSH deployment will be added in next step"
-          echo "Stage: ${{ steps.stage.outputs.stage }}"
+         ssh -o StrictHostKeyChecking=no ubuntu@$EC2_PUBLIC_IP << 'EOF'
+         set -e
+
+          STAGE="${{ steps.stage.outputs.stage }}"
+          APP_DIR="/home/ubuntu/app"
+          DEPLOY_LOG="$APP_DIR/deploy.log"
+          APP_LOG="$APP_DIR/app.log"
+
+          INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+          BUCKET_NAME="dev-logs-edc6f26c"
+          S3_PATH="s3://${BUCKET_NAME}/logs/${STAGE}/${INSTANCE_ID}"
+
+          echo "[INFO] Connected to EC2" | tee -a $DEPLOY_LOG
+
+          cd /home/ubuntu
+
+          if [ ! -d app ]; then
+          echo "[INFO] Cloning repository" | tee -a $DEPLOY_LOG
+          git clone https://github.com/techeazy-consulting/techeazy-devops app
+          fi
+
+          cd app
+          echo "[INFO] Pulling latest code" | tee -a $DEPLOY_LOG
+          git pull >> $DEPLOY_LOG 2>&1
+
+          echo "[INFO] Building application" | tee -a $DEPLOY_LOG
+          mvn clean package >> $DEPLOY_LOG 2>&1
+
+          echo "[INFO] Restarting application" | tee -a $DEPLOY_LOG
+          sudo pkill -f java || true
+
+          nohup sudo java -jar target/*.jar --server.port=80 > $APP_LOG 2>&1 &
+
+          sleep 5
+
+          echo "[INFO] Uploading logs to S3: $S3_PATH" | tee -a $DEPLOY_LOG
+          aws s3 cp $DEPLOY_LOG $S3_PATH/deploy.log
+          aws s3 cp $APP_LOG $S3_PATH/app.log
+
+          echo "[INFO] Deployment completed successfully" | tee -a $DEPLOY_LOG
+          EOF
+
+      - name: Health Check (HTTP 80)
+        run: |
+          echo "Checking app on http://$EC2_PUBLIC_IP"
+
+          for i in {1..30}; do
+          if curl -s http://$EC2_PUBLIC_IP > /dev/null; then
+          echo "✅ Application is reachable"
+          exit 0
+          fi
+          echo "Attempt $i failed, retrying..."
+          sleep 5
+          done
+
+          echo "❌ Application failed health check"
+          exit 1
+
 
       # -----------------------------
       # IMPORTANT:
