@@ -143,11 +143,14 @@ jobs:
           ssh -o StrictHostKeyChecking=no ubuntu@$EC2_PUBLIC_IP << 'EOF'
           set -e
 
+          
           STAGE="${{ steps.stage.outputs.stage }}"
           APP_DIR="/home/ubuntu/app"
           DEPLOY_LOG="$APP_DIR/deploy.log"
           APP_LOG="$APP_DIR/app.log"
 
+          mkdir -p $APP_DIR
+          
           INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
           BUCKET_NAME="dev-logs-edc6f26c"
           S3_PATH="s3://${BUCKET_NAME}/logs/${STAGE}/${INSTANCE_ID}"
