@@ -71,7 +71,7 @@ resource "aws_instance" "devops_ec2" {
   key_name      = aws_key_pair.devops_key.key_name
 
   iam_instance_profile = aws_iam_instance_profile.ec2_instance_profile.name
-  vpc_security_group_ids = [aws_security_group.ec2_sg.id]
+  vpc_security_group_ids = [aws_security_group.devops_sg.id]
 
   user_data = templatefile("${path.module}/scripts/user_data.tpl", {
     stage = var.stage
