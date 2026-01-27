@@ -144,12 +144,14 @@ jobs:
           set -e
 
           
-          STAGE="${{ steps.stage.outputs.stage }}"
-          APP_DIR="/home/ubuntu/app"
-          DEPLOY_LOG="$APP_DIR/deploy.log"
-          APP_LOG="$APP_DIR/app.log"
+          STAGE="dev"
 
-          mkdir -p $APP_DIR
+          APP_DIR="/home/ubuntu/app"
+          LOG_DIR="/home/ubuntu/logs"
+          DEPLOY_LOG="$LOG_DIR/deploy.log"
+          APP_LOG="$LOG_DIR/app.log"
+          
+          mkdir -p $LOG_DIR
           
           INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
           BUCKET_NAME="dev-logs-edc6f26c"
