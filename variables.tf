@@ -22,3 +22,8 @@ variable "bucket_name" {
   type        = string
   default     = ""
 }
+variable "project" {
+  description = "Project identifier"
+  type        = string
+  default     = "assignment3"
+}
