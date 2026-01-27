@@ -140,8 +140,8 @@ jobs:
       # -----------------------------
       - name: Deploy application over SSH + upload logs to S3
         run: |
-         ssh -o StrictHostKeyChecking=no ubuntu@$EC2_PUBLIC_IP << 'EOF'
-         set -e
+          ssh -o StrictHostKeyChecking=no ubuntu@$EC2_PUBLIC_IP << 'EOF'
+          set -e
 
           STAGE="${{ steps.stage.outputs.stage }}"
           APP_DIR="/home/ubuntu/app"
@@ -157,8 +157,8 @@ jobs:
           cd /home/ubuntu
 
           if [ ! -d app ]; then
-          echo "[INFO] Cloning repository" | tee -a $DEPLOY_LOG
-          git clone https://github.com/techeazy-consulting/techeazy-devops.git app
+           echo "[INFO] Cloning repository" | tee -a $DEPLOY_LOG
+           git clone https://github.com/techeazy-consulting/techeazy-devops.git app
           fi
 
           cd app
