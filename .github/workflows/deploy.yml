@@ -156,14 +156,18 @@ jobs:
 
           cd /home/ubuntu
 
-          if [ ! -d app ]; then
-           echo "[INFO] Cloning repository" | tee -a $DEPLOY_LOG
-           git clone https://github.com/techeazy-consulting/techeazy-devops.git app
+          # ---------- Git handling (PUBLIC repo, safe & idempotent) ----------
+          if [ ! -d app/.git ]; then
+            echo "[INFO] App directory not a git repo. Re-cloning..." | tee -a $DEPLOY_LOG
+            rm -rf app
+            git clone https://github.com/<YOUR_GITHUB_USERNAME>/<YOUR_REPO>.git app >> $DEPLOY_LOG 2>&1
+          else
+           cd app
+           echo "[INFO] Pulling latest code" | tee -a $DEPLOY_LOG
+           git pull >> $DEPLOY_LOG 2>&1
           fi
 
-          cd app
-          echo "[INFO] Pulling latest code" | tee -a $DEPLOY_LOG
-          git pull >> $DEPLOY_LOG 2>&1
+          cd $APP_DIR
 
           echo "[INFO] Building application" | tee -a $DEPLOY_LOG
           mvn clean package >> $DEPLOY_LOG 2>&1
@@ -175,7 +179,7 @@ jobs:
 
           sleep 5
 
-          echo "[INFO] Uploading logs to S3: $S3_PATH" | tee -a $DEPLOY_LOG
+          echo "[INFO] Uploading logs to S3" | tee -a $DEPLOY_LOG
           aws s3 cp $DEPLOY_LOG $S3_PATH/deploy.log
           aws s3 cp $APP_LOG $S3_PATH/app.log
 
