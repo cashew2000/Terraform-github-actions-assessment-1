@@ -46,7 +46,7 @@ on:
   push:
     branches:
       - main
-      - assessment-2
+      - assessment-3
     tags:
       - deploy-prod*
   workflow_dispatch:
@@ -158,7 +158,7 @@ jobs:
 
           if [ ! -d app ]; then
           echo "[INFO] Cloning repository" | tee -a $DEPLOY_LOG
-          git clone https://github.com/techeazy-consulting/techeazy-devops app
+          git clone https://github.com/techeazy-consulting/techeazy-devops.git app
           fi
 
           cd app
