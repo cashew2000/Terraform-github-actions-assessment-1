@@ -38,7 +38,7 @@ jobs:
           terraform plan \
             -var="stage=${{ inputs.stage }}"
 
-      - name: Terraform Apply
-        run: |
-          terraform apply -auto-approve \
-            -var="stage=${{ inputs.stage }}"
+      #- name: Terraform Apply
+        #run: |
+          #terraform apply -auto-approve \
+            #-var="stage=${{ inputs.stage }}"
