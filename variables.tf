@@ -17,3 +17,13 @@ variable "auto_stop_minutes" {
   type        = number
   default     = 60
 }
+variable "bucket_name" {
+  description = "Optional: provide a bucket name. If empty, Terraform will auto-generate a unique name."
+  type        = string
+  default     = ""
+}
+variable "project" {
+  description = "Project identifier"
+  type        = string
+  default     = "assignment3"
+}

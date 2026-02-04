@@ -1,41 +1,107 @@
-name: Terraform EC2 Deployment
+name: Application Deployment
 
 on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "Stage (dev/prod)"
+        description: "Deployment stage"
         required: true
-        default: "dev"
-      auto_stop_minutes:
-        description: "Minutes after which EC2 should shut down (0 to disable)"
-        required: false
-        default: "60"
+        type: choice
+        options:
+          - dev
+          - qa
+          - prod
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-southeast-2
+          aws-region: ap-south-1
 
-      - name: Terraform Init
-        run: terraform init
+      - name: Get EC2 Public IP
+        run: |
+          IP=$(aws ec2 describe-instances \
+            --filters "Name=tag:Stage,Values=${{ inputs.stage }}" \
+                     "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].PublicIpAddress" \
+            --output text)
+          echo "EC2_PUBLIC_IP=$IP" >> $GITHUB_ENV
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve -var="stage=${{ github.event.inputs.stage }}" -var="auto_stop_minutes=${{ github.event.inputs.auto_stop_minutes }}"
+      - name: Deploy application over SSH + upload logs to S3
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@$EC2_PUBLIC_IP << 'EOF'
+          set -e
+
           
+          STAGE="dev"
+
+          APP_DIR="/home/ubuntu/app"
+          LOG_DIR="/home/ubuntu/logs"
+          DEPLOY_LOG="$LOG_DIR/deploy.log"
+          APP_LOG="$LOG_DIR/app.log"
           
-      - name: Show Terraform Outputs
-        run: terraform output
+          mkdir -p $LOG_DIR
+          
+          INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+          BUCKET_NAME="dev-logs-edc6f26c"
+          S3_PATH="s3://${BUCKET_NAME}/logs/${STAGE}/${INSTANCE_ID}"
+
+          echo "[INFO] Connected to EC2" | tee -a $DEPLOY_LOG
+
+          cd /home/ubuntu
+
+          # ---------- Git handling (PUBLIC repo, safe & idempotent) ----------
+          if [ ! -d app/.git ]; then
+            echo "[INFO] App directory not a git repo. Re-cloning..." | tee -a $DEPLOY_LOG
+            rm -rf app
+            git clone https://github.com/techeazy-consulting/techeazy-devops.git app >> $DEPLOY_LOG 2>&1
+          else
+           cd app
+           echo "[INFO] Pulling latest code" | tee -a $DEPLOY_LOG
+           git pull >> $DEPLOY_LOG 2>&1
+          fi
+
+          cd $APP_DIR
+
+          echo "[INFO] Building application" | tee -a $DEPLOY_LOG
+          mvn clean package >> $DEPLOY_LOG 2>&1
+
+          echo "[INFO] Restarting application" | tee -a $DEPLOY_LOG
+          sudo pkill -f java || true
+
+          nohup sudo java -jar target/*.jar --server.port=80 > $APP_LOG 2>&1 &
+
+          sleep 5
+
+          echo "[INFO] Uploading logs to S3" | tee -a $DEPLOY_LOG
+          aws s3 cp $DEPLOY_LOG $S3_PATH/deploy.log
+          aws s3 cp $APP_LOG $S3_PATH/app.log
+
+          echo "[INFO] Deployment completed successfully" | tee -a $DEPLOY_LOG
+          EOF
+
+      - name: Health Check (HTTP 80)
+        run: |
+          echo "Checking app on http://$EC2_PUBLIC_IP"
+
+          for i in {1..30}; do
+          if curl -s http://$EC2_PUBLIC_IP > /dev/null; then
+          echo "✅ Application is reachable"
+          exit 0
+          fi
+          echo "Attempt $i failed, retrying..."
+          sleep 5
+          done
+
+          echo "❌ Application failed health check"
+          exit 1
+

@@ -66,20 +66,25 @@ resource "aws_security_group" "devops_sg" {
 # EC2 Instance
 ##############################################################
 resource "aws_instance" "devops_ec2" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = var.instance_type
+  ami           = data.aws_ami.ubuntu.id
+  instance_type = var.instance_type
+  key_name      = aws_key_pair.devops_key.key_name
+
+  iam_instance_profile = aws_iam_instance_profile.ec2_instance_profile.name
   vpc_security_group_ids = [aws_security_group.devops_sg.id]
   iam_instance_profile   = aws_iam_instance_profile.ec2_instance_profile.name #adding IAM profile
   # Pass parameters into user-data template
   user_data = templatefile("${path.module}/scripts/user_data.tpl", {
-    auto_stop_minutes = var.auto_stop_minutes
+    stage = var.stage
   })
 
   tags = {
-    Name  = "devops-${var.stage}-instance"
-    Stage = var.stage
+    Name    = "${var.project}-ec2-${var.stage}"
+    Project = var.project
+    Stage   = var.stage
   }
 }
+
 
 ##############################################################
 # Outputs
